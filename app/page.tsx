@@ -29,7 +29,7 @@ const SYSTEM_PROMPT = `You are an elite Google Business Profile moderator. Analy
 
 type Status = 'Pass' | 'Fail' | 'Warning'
 type Check = { status: Status; reason: string }
-type Report = { textRatio: Check; visualSafety: Check; captionPolicy: Check }
+type Report = { textRatio: Check; visualSafety: Check; captionPolicy: Check; imageQuality: Check; captionQuality: Check; localRelevance: Check }
 type AIResult = Report & { qualityScore: number; improvedCaption: string; captionChanges: string[]; imageSuggestions: string[] }
 
 type HardRules = {
@@ -50,6 +50,9 @@ const initialReport: Report = {
   textRatio: { status: 'Warning', reason: 'Run validation to analyze text coverage.' },
   visualSafety: { status: 'Warning', reason: 'Run validation to analyze visual safety.' },
   captionPolicy: { status: 'Warning', reason: 'Run validation to analyze caption policy.' },
+  imageQuality: { status: 'Warning', reason: 'Run validation to assess resolution, composition, and visual quality.' },
+  captionQuality: { status: 'Warning', reason: 'Run validation to assess clarity, relevance, and call-to-action quality.' },
+  localRelevance: { status: 'Warning', reason: 'Run validation to assess whether the post is useful and relevant to local customers.' },
 }
 
 function StatusIcon({ status }: { status: Status }) {
@@ -87,6 +90,7 @@ export default function Page() {
   const [file, setFile] = useState<File | null>(null)
   const [preview, setPreview] = useState<string | null>(null)
   const [dimensions, setDimensions] = useState<string>('')
+  const [imageMetrics, setImageMetrics] = useState<{ width: number; height: number; orientation: 'square' | 'portrait' | 'landscape' } | null>(null)
   const [caption, setCaption] = useState('')
   const [rules, setRules] = useState(initialRules)
   const [report, setReport] = useState(initialReport)
@@ -127,8 +131,17 @@ export default function Page() {
     if (nextFile.size > MAX_FILE_SIZE) {
       setFile(nextFile)
       setPreview(null)
+      setImageMetrics(null)
       setRules((current) => ({ ...current, image: { status: 'Fail', detail: 'Image exceeds the 5 MB limit.' } }))
       setNotice('This image is over the 5 MB limit.')
+      return
+    }
+    if (nextFile.size < 10 * 1024) {
+      setFile(nextFile)
+      setPreview(null)
+      setImageMetrics(null)
+      setRules((current) => ({ ...current, image: { status: 'Fail', detail: 'Image is under Google\'s 10 KB minimum.' } }))
+      setNotice('Google recommends Business Profile photos be at least 10 KB.')
       return
     }
     setFile(nextFile)
@@ -136,9 +149,26 @@ export default function Page() {
     reader.onload = () => setPreview(reader.result as string)
     reader.readAsDataURL(nextFile)
     const image = new Image()
-    image.onload = () => setDimensions(`${image.naturalWidth} × ${image.naturalHeight}px`)
+    image.onload = () => {
+      const width = image.naturalWidth
+      const height = image.naturalHeight
+      const orientation = width === height ? 'square' : width > height ? 'landscape' : 'portrait'
+      setDimensions(`${width} × ${height}px · ${orientation}`)
+      setImageMetrics({ width, height, orientation })
+      if (width < 250 || height < 250) {
+        setRules((current) => ({ ...current, image: { status: 'Fail', detail: `${width} × ${height}px · below Google\'s 250 × 250px minimum` } }))
+        setNotice('This image is too small. Google Business Profile photos must be at least 250 × 250 pixels.')
+      } else {
+        setRules((current) => ({ ...current, image: { status: 'Pass', detail: `${(nextFile.size / 1024 / 1024).toFixed(2)} MB · ${width} × ${height}px · ${orientation}` } }))
+      }
+      URL.revokeObjectURL(image.src)
+    }
+    image.onerror = () => {
+      setImageMetrics(null)
+      setRules((current) => ({ ...current, image: { status: 'Fail', detail: 'Could not read image dimensions.' } }))
+      setNotice('This image could not be read. Please choose another JPG or PNG.')
+    }
     image.src = URL.createObjectURL(nextFile)
-    setRules((current) => ({ ...current, image: { status: 'Pass', detail: `${(nextFile.size / 1024 / 1024).toFixed(2)} MB · checking dimensions` } }))
     setReport(initialReport)
   }
 
@@ -158,7 +188,7 @@ export default function Page() {
     const hasLink = /https?:\/\/|www\.|\bcom\b/i.test(caption)
     const hasPhone = /(\+?\d[\d .()-]{7,}\d)/.test(caption)
     return {
-      image: file ? (file.size <= MAX_FILE_SIZE ? { status: 'Pass', detail: `${(file.size / 1024 / 1024).toFixed(2)} MB${dimensions ? ` · ${dimensions}` : ''}` } : { status: 'Fail', detail: 'Image exceeds the 5 MB limit.' }) : { status: 'Fail', detail: 'An image is required.' },
+      image: file ? (file.size < 10 * 1024 ? { status: 'Fail', detail: 'Image is under Google\'s 10 KB minimum.' } : file.size > MAX_FILE_SIZE ? { status: 'Fail', detail: 'Image exceeds the 5 MB limit.' } : !imageMetrics ? { status: 'Warning', detail: 'Still reading image dimensions.' } : imageMetrics.width < 250 || imageMetrics.height < 250 ? { status: 'Fail', detail: `${dimensions} · below Google\'s 250 × 250px minimum` } : { status: 'Pass', detail: `${(file.size / 1024 / 1024).toFixed(2)} MB · ${dimensions}` }) : { status: 'Fail', detail: 'An image is required.' },
       caption: caption.length <= MAX_CAPTION_LENGTH ? { status: 'Pass', detail: `${caption.length} / ${MAX_CAPTION_LENGTH} characters` } : { status: 'Fail', detail: `${caption.length} characters is over the 1,500 character limit.` },
       links: hasLink ? { status: 'Fail', detail: 'Links are not allowed in GBP post captions.' } : { status: 'Pass', detail: 'No URLs or domain links detected.' },
       phone: hasPhone ? { status: 'Fail', detail: 'Phone numbers are not allowed in GBP post captions.' } : { status: 'Pass', detail: 'No phone number detected.' },
@@ -175,6 +205,7 @@ export default function Page() {
     setFile(null)
     setPreview(null)
     setDimensions('')
+    setImageMetrics(null)
     setNotice(null)
     setShowFullCaption(false)
     if (fileInputRef.current) fileInputRef.current.value = ''
@@ -185,8 +216,8 @@ export default function Page() {
     setRules(nextRules)
     setNotice(null)
     setAiResult(null)
-    if (!file || nextRules.image.status === 'Fail' || nextRules.caption.status === 'Fail') {
-      setNotice('Add a valid image and keep the caption under 1,500 characters before running AI moderation.')
+    if (!file || nextRules.image.status !== 'Pass' || nextRules.caption.status === 'Fail') {
+      setNotice('Add an image at least 250 × 250 pixels and keep the caption under 1,500 characters before running AI moderation.')
       return
     }
     if (!apiKey.trim()) {
@@ -196,6 +227,7 @@ export default function Page() {
     }
     setLoading(true)
     setProgress(12)
+    let progressTimer: number | undefined
     try {
       const base64 = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader()
@@ -203,17 +235,21 @@ export default function Page() {
         reader.onerror = () => reject(new Error('Could not read image'))
         reader.readAsDataURL(file)
       })
-      setProgress(38)
-      const response = await fetch('/api/validate', {
+    setProgress(38)
+    progressTimer = window.setInterval(() => {
+      setProgress((current) => Math.min(current + 1, 74))
+    }, 900)
+    const response = await fetch('/api/validate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ caption, image: base64, mimeType: file.type, apiKey: apiKey.trim(), provider: 'gemini' }),
+        body: JSON.stringify({ caption, image: base64, mimeType: file.type, apiKey: apiKey.trim(), provider: 'gemini', imageContext: imageMetrics ? { ...imageMetrics, fileSizeBytes: file.size } : null }),
       })
-      setProgress(78)
-      const data = await response.json()
+    if (progressTimer !== undefined) window.clearInterval(progressTimer)
+    setProgress(78)
+    const data = await response.json()
       if (!response.ok) throw new Error(data.error ?? 'AI validation failed. Please try again.')
       const result = data as AIResult
-      setReport({ textRatio: result.textRatio, visualSafety: result.visualSafety, captionPolicy: result.captionPolicy })
+      setReport({ textRatio: result.textRatio, visualSafety: result.visualSafety, captionPolicy: result.captionPolicy, imageQuality: result.imageQuality, captionQuality: result.captionQuality, localRelevance: result.localRelevance })
       setAiResult(result)
       if (result.improvedCaption && result.improvedCaption !== caption) setCaption(result.improvedCaption)
       setProgress(100)
@@ -221,8 +257,9 @@ export default function Page() {
     } catch (error) {
       setProgress(0)
       setNotice(error instanceof Error ? error.message : 'Something went wrong while validating.')
-    } finally {
-      setLoading(false)
+  } finally {
+    if (progressTimer !== undefined) window.clearInterval(progressTimer)
+    setLoading(false)
     }
   }
 
@@ -261,7 +298,7 @@ export default function Page() {
           <section className="flex min-w-0 flex-col gap-4 lg:sticky lg:top-3">
             {aiResult && <div className="order-first rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_8px_30px_rgba(15,23,42,0.07)] sm:p-5"><div className="mb-4 flex items-start justify-between gap-3"><div><div className="flex items-center gap-2"><Sparkles className="size-4 text-indigo-500" /><p className="text-base font-bold">AI action plan</p></div><p className="mt-1 text-xs text-slate-500">Ready-to-use improvements from your validation.</p></div><div className="flex shrink-0 items-center gap-2"><span className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${aiResult.qualityScore >= 80 ? 'bg-emerald-50 text-emerald-700' : aiResult.qualityScore >= 60 ? 'bg-amber-50 text-amber-700' : 'bg-red-50 text-red-700'}`}>{Math.max(0, Math.min(100, Math.round(aiResult.qualityScore)))} / 100</span><span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-bold text-emerald-700">Complete</span></div></div><div className="grid gap-3 xl:grid-cols-2"><div className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-4"><div className="flex items-center gap-2"><MessageSquareText className="size-4 text-emerald-600" /><p className="text-sm font-bold text-emerald-950">Caption improvement</p></div><div className="mt-3 rounded-xl border border-emerald-100 bg-white/90 p-3"><div className="flex items-center justify-between gap-3"><p className="text-[11px] font-bold uppercase tracking-wide text-emerald-700">Ready to publish</p><button onClick={copyImprovedCaption} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-emerald-200 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-emerald-700 transition hover:bg-emerald-50" aria-label="Copy improved caption"><Clipboard className="size-3.5" /> {copied ? 'Copied' : 'Copy'}</button></div><p className={`mt-2 whitespace-pre-wrap break-words text-sm leading-6 text-slate-700 ${showFullCaption ? '' : 'line-clamp-6'}`}>{aiResult.improvedCaption}</p>{aiResult.improvedCaption.length > 420 && <button onClick={() => setShowFullCaption((open) => !open)} className="mt-2 text-[11px] font-semibold text-emerald-700 hover:text-emerald-900">{showFullCaption ? 'Show less' : 'See more'}</button>}</div><div className="hidden" aria-hidden="true"><button tabIndex={-1} onClick={copyImprovedCaption} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-emerald-200 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-emerald-700 transition hover:bg-emerald-50" aria-label="Copy improved caption"><Clipboard className="size-3.5" /> {copied ? 'Copied' : 'Copy'}</button></div>{aiResult.captionChanges.length > 0 && <div className="mt-3 border-t border-emerald-200/70 pt-3"><p className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-emerald-700">What changed</p><ul className="flex flex-col gap-1.5 text-xs leading-5 text-emerald-800">{aiResult.captionChanges.map((change) => <li key={change}>• {change}</li>)}</ul></div>}</div><div className="rounded-xl border border-indigo-200 bg-indigo-50/60 p-4"><div className="flex items-center gap-2"><ImagePlus className="size-4 text-indigo-600" /><p className="text-sm font-bold text-indigo-950">Image suggestions</p></div><p className="mt-1.5 text-xs text-indigo-700">Make the creative clearer, more relevant, and easier to trust.</p><ul className="mt-3 flex flex-col gap-2 text-xs leading-5 text-indigo-900">{aiResult.imageSuggestions.map((suggestion) => <li key={suggestion} className="flex gap-2"><span className="font-bold">{`→`}</span><span>{suggestion}</span></li>)}</ul></div></div></div>}
             <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_2px_12px_rgba(15,23,42,0.03)] sm:p-6"><div className="mb-5 flex items-start justify-between"><div><p className="text-base font-bold">Hard rules</p><p className="mt-1 text-xs text-slate-500">Instant checks run before any AI analysis.</p></div><div className="flex size-8 items-center justify-center rounded-lg bg-slate-100"><Check className="size-4 text-slate-600" /></div></div><div><RuleRow label="Image size" detail={rules.image.detail} status={rules.image.status} /><RuleRow label="Caption length" detail={rules.caption.detail} status={rules.caption.status} /><RuleRow label="URLs & links" detail={rules.links.detail} status={rules.links.status} /><RuleRow label="Phone numbers" detail={rules.phone.detail} status={rules.phone.status} /></div></div>
-            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_2px_12px_rgba(15,23,42,0.03)] sm:p-6"><div className="mb-5 flex items-start justify-between"><div><p className="text-base font-bold">AI moderation report</p><p className="mt-1 text-xs text-slate-500">Deeper checks for imagery and language.</p></div><div className="flex size-8 items-center justify-center rounded-lg bg-indigo-50"><Sparkles className="size-4 text-indigo-500" /></div></div><div><RuleRow label="Text-to-image ratio" detail={report.textRatio.reason} status={report.textRatio.status} /><RuleRow label="SafeSearch & quality" detail={report.visualSafety.reason} status={report.visualSafety.status} /><RuleRow label="Text policy" detail={report.captionPolicy.reason} status={report.captionPolicy.status} /></div></div>
+            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_2px_12px_rgba(15,23,42,0.03)] sm:p-6"><div className="mb-5 flex items-start justify-between"><div><p className="text-base font-bold">AI moderation report</p><p className="mt-1 text-xs text-slate-500">Deeper checks for imagery and language.</p></div><div className="flex size-8 items-center justify-center rounded-lg bg-indigo-50"><Sparkles className="size-4 text-indigo-500" /></div></div><div><RuleRow label="Text-to-image ratio" detail={report.textRatio.reason} status={report.textRatio.status} /><RuleRow label="SafeSearch & quality" detail={report.visualSafety.reason} status={report.visualSafety.status} /><RuleRow label="Image quality & composition" detail={report.imageQuality.reason} status={report.imageQuality.status} /><RuleRow label="Caption policy" detail={report.captionPolicy.reason} status={report.captionPolicy.status} /><RuleRow label="Caption clarity & CTA" detail={report.captionQuality.reason} status={report.captionQuality.status} /><RuleRow label="Local customer relevance" detail={report.localRelevance.reason} status={report.localRelevance.status} /></div></div>
           </section>
         </div>
         <footer className="pt-12 text-center text-xs text-slate-400">Built by <a href="https://shomikujzaman.vercel.app" target="_blank" rel="noreferrer" className="font-medium text-slate-500 underline decoration-slate-300 underline-offset-2 transition hover:text-slate-800">shomik</a></footer>
