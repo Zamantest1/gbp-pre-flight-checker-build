@@ -40,7 +40,13 @@ export async function POST(request: Request) {
     } else {
       response = await fetch('https://api.openai.com/v1/chat/completions', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${body.apiKey}` }, body: JSON.stringify({ model: 'gpt-4o-mini', temperature: 0.2, response_format: { type: 'json_object' }, messages: [{ role: 'system', content: prompt }, { role: 'user', content: userContent }] }) })
       const data = await response.json()
-      if (!response.ok) throw new Error(data.error?.message ?? 'OpenAI API request failed.')
+      if (!response.ok) {
+        const apiError = data.error?.message ?? 'OpenAI API request failed.'
+        if (response.status === 401) throw new Error('OpenAI rejected this API key. Check that it is active, copied completely, and belongs to the correct OpenAI project.')
+        if (response.status === 429 && /credit|billing|quota|余额/i.test(apiError)) throw new Error('OpenAI accepted the key but this account has no API credits. Add billing or credits in the OpenAI Platform, then try again.')
+        if (response.status === 429) throw new Error('OpenAI is temporarily rate-limiting this request. Wait a moment and try again.')
+        throw new Error(apiError)
+      }
       text = data.choices?.[0]?.message?.content ?? ''
     }
 
