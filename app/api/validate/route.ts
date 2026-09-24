@@ -21,6 +21,12 @@ function parseModelJson(text: string) {
   return JSON.parse(cleaned.slice(start, end + 1))
 }
 
+const REQUEST_TIMEOUT_MS = 45000
+
+async function fetchWithTimeout(input: RequestInfo | URL, init?: RequestInit) {
+  return fetch(input, { ...init, signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) })
+}
+
 export async function POST(request: Request) {
   try {
     const body = await request.json() as RequestBody
@@ -34,7 +40,7 @@ export async function POST(request: Request) {
 
     if (body.provider === 'gemini') {
       const preferredModels = ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.0-flash']
-      const modelsResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(body.apiKey)}`)
+      const modelsResponse = await fetchWithTimeout(`https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(body.apiKey)}`)
       const modelsData = await modelsResponse.json()
       if (!modelsResponse.ok) throw new Error(modelsData.error?.message ?? 'Gemini API key was rejected.')
 
@@ -47,7 +53,7 @@ export async function POST(request: Request) {
       const shuffledModels = candidates.sort(() => Math.random() - 0.5)
       let lastError = 'Gemini API request failed.'
       for (const model of shuffledModels) {
-        response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(body.apiKey)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ systemInstruction: { parts: [{ text: prompt }] }, contents: [{ role: 'user', parts: [{ text: `Caption to moderate:\n${body.caption}` }, { inlineData: { mimeType: body.mimeType, data: body.image } }] }], generationConfig: { temperature: 0.2, responseMimeType: 'application/json' } }) })
+        response = await fetchWithTimeout(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(body.apiKey)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ systemInstruction: { parts: [{ text: prompt }] }, contents: [{ role: 'user', parts: [{ text: `Caption to moderate:\n${body.caption}` }, { inlineData: { mimeType: body.mimeType, data: body.image } }] }], generationConfig: { temperature: 0.2, responseMimeType: 'application/json' } }) })
         const data = await response.json()
         if (response.ok) {
           text = data.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
