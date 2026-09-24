@@ -29,6 +29,7 @@ const SYSTEM_PROMPT = `You are an elite Google Business Profile moderator. Analy
 type Status = 'Pass' | 'Fail' | 'Warning'
 type Check = { status: Status; reason: string }
 type Report = { textRatio: Check; visualSafety: Check; captionPolicy: Check }
+type AIResult = Report & { improvedCaption: string; captionChanges: string[]; imageSuggestions: string[] }
 
 type HardRules = {
   image: { status: Status; detail: string }
@@ -93,6 +94,8 @@ export default function Page() {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [dragging, setDragging] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [progress, setProgress] = useState(0)
+  const [aiResult, setAiResult] = useState<AIResult | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
 
   useEffect(() => {
@@ -158,16 +161,13 @@ export default function Page() {
     const nextRules = checkRules()
     setRules(nextRules)
     setNotice(null)
+    setAiResult(null)
     if (!file || nextRules.image.status === 'Fail' || nextRules.caption.status === 'Fail' || nextRules.links.status === 'Fail' || nextRules.phone.status === 'Fail') {
       setNotice('Fix the failed hard rules before running AI moderation.')
       return
     }
-    if (!apiKey.trim()) {
-      setSettingsOpen(true)
-      setNotice('Add an API key in Settings to run AI moderation.')
-      return
-    }
     setLoading(true)
+    setProgress(12)
     try {
       const base64 = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader()
@@ -175,26 +175,20 @@ export default function Page() {
         reader.onerror = () => reject(new Error('Could not read image'))
         reader.readAsDataURL(file)
       })
-      let raw = ''
-      if (provider === 'gemini') {
-        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${encodeURIComponent(apiKey)}`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ contents: [{ parts: [{ text: `${SYSTEM_PROMPT}\n\nCaption: ${caption}` }, { inline_data: { mime_type: file.type, data: base64 } }] }] }),
-        })
-        if (!response.ok) throw new Error('Gemini rejected the request. Check your API key.')
-        const data = await response.json()
-        raw = data.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
-      } else {
-        const response = await fetch('https://api.openai.com/v1/chat/completions', {
-          method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-          body: JSON.stringify({ model: 'gpt-4o-mini', response_format: { type: 'json_object' }, messages: [{ role: 'system', content: SYSTEM_PROMPT }, { role: 'user', content: [{ type: 'text', text: `Caption: ${caption}` }, { type: 'image_url', image_url: { url: `data:${file.type};base64,${base64}` } }] }] }),
-        })
-        if (!response.ok) throw new Error('OpenAI rejected the request. Check your API key.')
-        const data = await response.json()
-        raw = data.choices?.[0]?.message?.content ?? ''
-      }
-      const jsonText = raw.replace(/^```json\s*/i, '').replace(/\s*```$/i, '').trim()
-      setReport(JSON.parse(jsonText) as Report)
+      setProgress(38)
+      const response = await fetch('/api/validate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ caption, image: base64, mimeType: file.type }),
+      })
+      setProgress(78)
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error ?? 'AI validation failed. Please try again.')
+      const result = data as AIResult
+      setReport({ textRatio: result.textRatio, visualSafety: result.visualSafety, captionPolicy: result.captionPolicy })
+      setAiResult(result)
+      if (result.improvedCaption && result.improvedCaption !== caption) setCaption(result.improvedCaption)
+      setProgress(100)
     } catch (error) {
       setNotice(error instanceof Error ? error.message : 'Something went wrong while validating.')
     } finally {
@@ -228,11 +222,13 @@ export default function Page() {
             </div>
             <div className="mt-5"><div className="mb-2 flex items-center justify-between"><label htmlFor="caption" className="text-xs font-bold text-slate-700">Post caption</label><span className={`text-[11px] font-medium ${caption.length > MAX_CAPTION_LENGTH ? 'text-red-500' : 'text-slate-400'}`}>{caption.length} / {MAX_CAPTION_LENGTH}</span></div><textarea id="caption" value={caption} maxLength={2000} onChange={(event) => setCaption(event.target.value)} placeholder="Write the caption you plan to publish..." className="min-h-[142px] w-full resize-y rounded-xl border border-slate-200 bg-slate-50/50 p-3 text-sm leading-6 outline-none ring-offset-2 transition placeholder:text-slate-400 focus:border-slate-400 focus:bg-white focus:ring-2 focus:ring-slate-200" /></div>
             <button onClick={runValidation} disabled={loading} className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-slate-950 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-70">{loading ? <><Loader2 className="size-4 animate-spin" /> Analyzing post...</> : <><ShieldCheck className="size-4" /> Run GBP Validation</>}</button>
+            {loading && <div className="mt-4 rounded-xl border border-indigo-100 bg-indigo-50/70 p-3" aria-live="polite"><div className="mb-2 flex items-center justify-between text-[11px] font-semibold text-indigo-700"><span>AI validation in progress</span><span>{progress}%</span></div><div className="h-2 overflow-hidden rounded-full bg-white"><div className="h-full rounded-full bg-indigo-500 transition-all duration-500" style={{ width: `${progress}%` }} /></div><p className="mt-2 text-[11px] text-indigo-600">Checking caption policy, image safety, and creative quality...</p></div>}
             <p className="mt-3 flex items-center justify-center gap-1.5 text-[11px] text-slate-400"><LockKeyhole className="size-3" /> Your image is processed in memory and never uploaded to our servers.</p>
           </section>
 
           <section className="flex flex-col gap-6"><div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_2px_12px_rgba(15,23,42,0.03)] sm:p-6"><div className="mb-5 flex items-start justify-between"><div><p className="text-base font-bold">Hard rules</p><p className="mt-1 text-xs text-slate-500">Instant checks run before any AI analysis.</p></div><div className="flex size-8 items-center justify-center rounded-lg bg-slate-100"><Check className="size-4 text-slate-600" /></div></div><div><RuleRow label="Image size" detail={rules.image.detail} status={rules.image.status} /><RuleRow label="Caption length" detail={rules.caption.detail} status={rules.caption.status} /><RuleRow label="URLs & links" detail={rules.links.detail} status={rules.links.status} /><RuleRow label="Phone numbers" detail={rules.phone.detail} status={rules.phone.status} /></div></div>
             <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_2px_12px_rgba(15,23,42,0.03)] sm:p-6"><div className="mb-5 flex items-start justify-between"><div><p className="text-base font-bold">AI moderation report</p><p className="mt-1 text-xs text-slate-500">Deeper checks for imagery and language.</p></div><div className="flex size-8 items-center justify-center rounded-lg bg-indigo-50"><Sparkles className="size-4 text-indigo-500" /></div></div><div><RuleRow label="Text-to-image ratio" detail={report.textRatio.reason} status={report.textRatio.status} /><RuleRow label="SafeSearch & quality" detail={report.visualSafety.reason} status={report.visualSafety.status} /><RuleRow label="Text policy" detail={report.captionPolicy.reason} status={report.captionPolicy.status} /></div></div>
+            {aiResult && <div className="grid gap-6 sm:grid-cols-2"><div className="rounded-2xl border border-emerald-200 bg-emerald-50/60 p-5"><div className="flex items-center gap-2"><MessageSquareText className="size-4 text-emerald-600" /><p className="text-sm font-bold text-emerald-950">Caption improvement</p></div><p className="mt-3 rounded-xl border border-emerald-100 bg-white/80 p-3 text-sm leading-6 text-slate-700">{aiResult.improvedCaption}</p>{aiResult.captionChanges.length > 0 && <ul className="mt-3 flex flex-col gap-1.5 text-xs text-emerald-800">{aiResult.captionChanges.map((change) => <li key={change}>• {change}</li>)}</ul>}</div><div className="rounded-2xl border border-indigo-200 bg-indigo-50/60 p-5"><div className="flex items-center gap-2"><ImagePlus className="size-4 text-indigo-600" /><p className="text-sm font-bold text-indigo-950">Image suggestions</p></div><ul className="mt-3 flex flex-col gap-2 text-xs leading-5 text-indigo-900">{aiResult.imageSuggestions.map((suggestion) => <li key={suggestion} className="flex gap-2"><span className="font-bold">{`→`}</span><span>{suggestion}</span></li>)}</ul></div></div>}
           </section>
         </div>
         <footer className="pt-12 text-center text-xs text-slate-400">Built by <a href="https://shomikujzaman.vercel.app" target="_blank" rel="noreferrer" className="font-medium text-slate-500 underline decoration-slate-300 underline-offset-2 transition hover:text-slate-800">shomik</a></footer>
