@@ -38,7 +38,7 @@ export async function POST(request: Request) {
       if (!response.ok) throw new Error(data.error?.message ?? 'Gemini API request failed.')
       text = data.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
     } else {
-      const endpoint = body.provider === 'claude' ? 'https://vyceai.com/v1/chat/completions' : 'https://api.openai.com/v1/chat/completions'
+      const endpoint = body.provider === 'claude' ? 'https://api.selora.lol/v1/chat/completions' : 'https://api.openai.com/v1/chat/completions'
       const model = body.provider === 'claude' ? 'claude-sonnet-4-6' : 'gpt-4o-mini'
       response = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${body.apiKey}` }, body: JSON.stringify({ model, temperature: 0.2, response_format: { type: 'json_object' }, messages: [{ role: 'system', content: prompt }, { role: 'user', content: userContent }] }) })
       const data = await response.json()
