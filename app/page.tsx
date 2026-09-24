@@ -227,6 +227,7 @@ export default function Page() {
     }
     setLoading(true)
     setProgress(12)
+    let progressTimer: number | undefined
     try {
       const base64 = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader()
@@ -234,14 +235,18 @@ export default function Page() {
         reader.onerror = () => reject(new Error('Could not read image'))
         reader.readAsDataURL(file)
       })
-      setProgress(38)
-      const response = await fetch('/api/validate', {
+    setProgress(38)
+    progressTimer = window.setInterval(() => {
+      setProgress((current) => Math.min(current + 1, 74))
+    }, 900)
+    const response = await fetch('/api/validate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ caption, image: base64, mimeType: file.type, apiKey: apiKey.trim(), provider: 'gemini', imageContext: imageMetrics ? { ...imageMetrics, fileSizeBytes: file.size } : null }),
       })
-      setProgress(78)
-      const data = await response.json()
+    if (progressTimer !== undefined) window.clearInterval(progressTimer)
+    setProgress(78)
+    const data = await response.json()
       if (!response.ok) throw new Error(data.error ?? 'AI validation failed. Please try again.')
       const result = data as AIResult
       setReport({ textRatio: result.textRatio, visualSafety: result.visualSafety, captionPolicy: result.captionPolicy, imageQuality: result.imageQuality, captionQuality: result.captionQuality, localRelevance: result.localRelevance })
@@ -252,8 +257,9 @@ export default function Page() {
     } catch (error) {
       setProgress(0)
       setNotice(error instanceof Error ? error.message : 'Something went wrong while validating.')
-    } finally {
-      setLoading(false)
+  } finally {
+    if (progressTimer !== undefined) window.clearInterval(progressTimer)
+    setLoading(false)
     }
   }
 
