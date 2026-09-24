@@ -87,6 +87,7 @@ export default function Page() {
   const [file, setFile] = useState<File | null>(null)
   const [preview, setPreview] = useState<string | null>(null)
   const [dimensions, setDimensions] = useState<string>('')
+  const [imageMetrics, setImageMetrics] = useState<{ width: number; height: number; orientation: 'square' | 'portrait' | 'landscape' } | null>(null)
   const [caption, setCaption] = useState('')
   const [rules, setRules] = useState(initialRules)
   const [report, setReport] = useState(initialReport)
@@ -127,8 +128,17 @@ export default function Page() {
     if (nextFile.size > MAX_FILE_SIZE) {
       setFile(nextFile)
       setPreview(null)
+      setImageMetrics(null)
       setRules((current) => ({ ...current, image: { status: 'Fail', detail: 'Image exceeds the 5 MB limit.' } }))
       setNotice('This image is over the 5 MB limit.')
+      return
+    }
+    if (nextFile.size < 10 * 1024) {
+      setFile(nextFile)
+      setPreview(null)
+      setImageMetrics(null)
+      setRules((current) => ({ ...current, image: { status: 'Fail', detail: 'Image is under Google\'s 10 KB minimum.' } }))
+      setNotice('Google recommends Business Profile photos be at least 10 KB.')
       return
     }
     setFile(nextFile)
@@ -136,9 +146,26 @@ export default function Page() {
     reader.onload = () => setPreview(reader.result as string)
     reader.readAsDataURL(nextFile)
     const image = new Image()
-    image.onload = () => setDimensions(`${image.naturalWidth} × ${image.naturalHeight}px`)
+    image.onload = () => {
+      const width = image.naturalWidth
+      const height = image.naturalHeight
+      const orientation = width === height ? 'square' : width > height ? 'landscape' : 'portrait'
+      setDimensions(`${width} × ${height}px · ${orientation}`)
+      setImageMetrics({ width, height, orientation })
+      if (width < 250 || height < 250) {
+        setRules((current) => ({ ...current, image: { status: 'Fail', detail: `${width} × ${height}px · below Google\'s 250 × 250px minimum` } }))
+        setNotice('This image is too small. Google Business Profile photos must be at least 250 × 250 pixels.')
+      } else {
+        setRules((current) => ({ ...current, image: { status: 'Pass', detail: `${(nextFile.size / 1024 / 1024).toFixed(2)} MB · ${width} × ${height}px · ${orientation}` } }))
+      }
+      URL.revokeObjectURL(image.src)
+    }
+    image.onerror = () => {
+      setImageMetrics(null)
+      setRules((current) => ({ ...current, image: { status: 'Fail', detail: 'Could not read image dimensions.' } }))
+      setNotice('This image could not be read. Please choose another JPG or PNG.')
+    }
     image.src = URL.createObjectURL(nextFile)
-    setRules((current) => ({ ...current, image: { status: 'Pass', detail: `${(nextFile.size / 1024 / 1024).toFixed(2)} MB · checking dimensions` } }))
     setReport(initialReport)
   }
 
@@ -158,7 +185,7 @@ export default function Page() {
     const hasLink = /https?:\/\/|www\.|\bcom\b/i.test(caption)
     const hasPhone = /(\+?\d[\d .()-]{7,}\d)/.test(caption)
     return {
-      image: file ? (file.size <= MAX_FILE_SIZE ? { status: 'Pass', detail: `${(file.size / 1024 / 1024).toFixed(2)} MB${dimensions ? ` · ${dimensions}` : ''}` } : { status: 'Fail', detail: 'Image exceeds the 5 MB limit.' }) : { status: 'Fail', detail: 'An image is required.' },
+      image: file ? (file.size < 10 * 1024 ? { status: 'Fail', detail: 'Image is under Google\'s 10 KB minimum.' } : file.size > MAX_FILE_SIZE ? { status: 'Fail', detail: 'Image exceeds the 5 MB limit.' } : !imageMetrics ? { status: 'Warning', detail: 'Still reading image dimensions.' } : imageMetrics.width < 250 || imageMetrics.height < 250 ? { status: 'Fail', detail: `${dimensions} · below Google\'s 250 × 250px minimum` } : { status: 'Pass', detail: `${(file.size / 1024 / 1024).toFixed(2)} MB · ${dimensions}` }) : { status: 'Fail', detail: 'An image is required.' },
       caption: caption.length <= MAX_CAPTION_LENGTH ? { status: 'Pass', detail: `${caption.length} / ${MAX_CAPTION_LENGTH} characters` } : { status: 'Fail', detail: `${caption.length} characters is over the 1,500 character limit.` },
       links: hasLink ? { status: 'Fail', detail: 'Links are not allowed in GBP post captions.' } : { status: 'Pass', detail: 'No URLs or domain links detected.' },
       phone: hasPhone ? { status: 'Fail', detail: 'Phone numbers are not allowed in GBP post captions.' } : { status: 'Pass', detail: 'No phone number detected.' },
@@ -175,6 +202,7 @@ export default function Page() {
     setFile(null)
     setPreview(null)
     setDimensions('')
+    setImageMetrics(null)
     setNotice(null)
     setShowFullCaption(false)
     if (fileInputRef.current) fileInputRef.current.value = ''
@@ -185,8 +213,8 @@ export default function Page() {
     setRules(nextRules)
     setNotice(null)
     setAiResult(null)
-    if (!file || nextRules.image.status === 'Fail' || nextRules.caption.status === 'Fail') {
-      setNotice('Add a valid image and keep the caption under 1,500 characters before running AI moderation.')
+    if (!file || nextRules.image.status !== 'Pass' || nextRules.caption.status === 'Fail') {
+      setNotice('Add an image at least 250 × 250 pixels and keep the caption under 1,500 characters before running AI moderation.')
       return
     }
     if (!apiKey.trim()) {
@@ -207,7 +235,7 @@ export default function Page() {
       const response = await fetch('/api/validate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ caption, image: base64, mimeType: file.type, apiKey: apiKey.trim(), provider: 'gemini' }),
+        body: JSON.stringify({ caption, image: base64, mimeType: file.type, apiKey: apiKey.trim(), provider: 'gemini', imageContext: imageMetrics ? { ...imageMetrics, fileSizeBytes: file.size } : null }),
       })
       setProgress(78)
       const data = await response.json()
