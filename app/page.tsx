@@ -162,8 +162,13 @@ export default function Page() {
     setRules(nextRules)
     setNotice(null)
     setAiResult(null)
-    if (!file || nextRules.image.status === 'Fail' || nextRules.caption.status === 'Fail' || nextRules.links.status === 'Fail' || nextRules.phone.status === 'Fail') {
-      setNotice('Fix the failed hard rules before running AI moderation.')
+    if (!file || nextRules.image.status === 'Fail' || nextRules.caption.status === 'Fail') {
+      setNotice('Add a valid image and keep the caption under 1,500 characters before running AI moderation.')
+      return
+    }
+    if (!apiKey.trim()) {
+      setNotice(`Add your ${provider === 'gemini' ? 'Gemini' : 'OpenAI'} API key in Settings before running AI moderation.`)
+      setSettingsOpen(true)
       return
     }
     setLoading(true)
@@ -179,7 +184,7 @@ export default function Page() {
       const response = await fetch('/api/validate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ caption, image: base64, mimeType: file.type }),
+        body: JSON.stringify({ caption, image: base64, mimeType: file.type, apiKey: apiKey.trim(), provider }),
       })
       setProgress(78)
       const data = await response.json()
