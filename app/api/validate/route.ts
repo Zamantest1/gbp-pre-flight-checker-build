@@ -11,7 +11,7 @@ const prompt = `You are an expert Google Business Profile moderator. Analyze the
 }
 Keep improvedCaption concise and publishable. Automatically remove or rewrite links, phone numbers, keyword stuffing, and restricted claims. If the caption is compliant, return it unchanged and use an empty captionChanges array. Give 2-4 practical imageSuggestions, even when the image passes. Never include markdown fences.`
 
-type RequestBody = { caption?: string; image?: string; mimeType?: string; apiKey?: string; provider?: 'openai' | 'gemini' }
+type RequestBody = { caption?: string; image?: string; mimeType?: string; apiKey?: string; provider?: 'openai' | 'gemini' | 'claude' }
 
 function parseModelJson(text: string) {
   const cleaned = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim()
@@ -25,7 +25,7 @@ export async function POST(request: Request) {
   try {
     const body = await request.json() as RequestBody
     if (!body.caption?.trim() || !body.image || !body.mimeType) return NextResponse.json({ error: 'Caption and image are required.' }, { status: 400 })
-    if (!body.apiKey?.trim()) return NextResponse.json({ error: `Add your ${body.provider === 'gemini' ? 'Gemini' : 'OpenAI'} API key in Settings before running AI moderation.` }, { status: 400 })
+    if (!body.apiKey?.trim()) return NextResponse.json({ error: `Add your ${body.provider === 'gemini' ? 'Gemini' : body.provider === 'claude' ? 'Claude/VyceAI' : 'OpenAI'} API key in Settings before running AI moderation.` }, { status: 400 })
 
     const imageUrl = `data:${body.mimeType};base64,${body.image}`
     const userContent = [{ type: 'text', text: `Caption to moderate:\n${body.caption}` }, { type: 'image_url', image_url: { url: imageUrl } }]
@@ -38,13 +38,16 @@ export async function POST(request: Request) {
       if (!response.ok) throw new Error(data.error?.message ?? 'Gemini API request failed.')
       text = data.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
     } else {
-      response = await fetch('https://api.openai.com/v1/chat/completions', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${body.apiKey}` }, body: JSON.stringify({ model: 'gpt-4o-mini', temperature: 0.2, response_format: { type: 'json_object' }, messages: [{ role: 'system', content: prompt }, { role: 'user', content: userContent }] }) })
+      const endpoint = body.provider === 'claude' ? 'https://vyceai.com/v1/chat/completions' : 'https://api.openai.com/v1/chat/completions'
+      const model = body.provider === 'claude' ? 'claude-sonnet-4-6' : 'gpt-4o-mini'
+      response = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${body.apiKey}` }, body: JSON.stringify({ model, temperature: 0.2, response_format: { type: 'json_object' }, messages: [{ role: 'system', content: prompt }, { role: 'user', content: userContent }] }) })
       const data = await response.json()
       if (!response.ok) {
-        const apiError = data.error?.message ?? 'OpenAI API request failed.'
-        if (response.status === 401) throw new Error('OpenAI rejected this API key. Check that it is active, copied completely, and belongs to the correct OpenAI project.')
-        if (response.status === 429 && /credit|billing|quota|余额/i.test(apiError)) throw new Error('OpenAI accepted the key but this account has no API credits. Add billing or credits in the OpenAI Platform, then try again.')
-        if (response.status === 429) throw new Error('OpenAI is temporarily rate-limiting this request. Wait a moment and try again.')
+        const serviceName = body.provider === 'claude' ? 'VyceAI' : 'OpenAI'
+        const apiError = data.error?.message ?? `${serviceName} API request failed.`
+        if (response.status === 401) throw new Error(`${serviceName} rejected this API key. Check that it is active and copied completely.`)
+        if (response.status === 429 && /credit|billing|quota|余额/i.test(apiError)) throw new Error(`${serviceName} accepted the key but this account has no API credits or quota. Check your account billing, then try again.`)
+        if (response.status === 429) throw new Error(`${serviceName} is temporarily rate-limiting this request. Wait a moment and try again.`)
         throw new Error(apiError)
       }
       text = data.choices?.[0]?.message?.content ?? ''

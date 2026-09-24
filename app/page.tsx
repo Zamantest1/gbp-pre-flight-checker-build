@@ -90,7 +90,7 @@ export default function Page() {
   const [rules, setRules] = useState(initialRules)
   const [report, setReport] = useState(initialReport)
   const [apiKey, setApiKey] = useState('')
-  const [provider, setProvider] = useState<'gemini' | 'openai'>('gemini')
+  const [provider, setProvider] = useState<'gemini' | 'openai' | 'claude'>('claude')
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [dragging, setDragging] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -100,7 +100,7 @@ export default function Page() {
 
   useEffect(() => {
     setApiKey(window.localStorage.getItem('gbp-api-key') ?? '')
-    setProvider((window.localStorage.getItem('gbp-provider') as 'gemini' | 'openai') ?? 'gemini')
+    setProvider((window.localStorage.getItem('gbp-provider') as 'gemini' | 'openai' | 'claude') ?? 'claude')
   }, [])
 
   function saveSettings() {
@@ -167,7 +167,7 @@ export default function Page() {
       return
     }
     if (!apiKey.trim()) {
-      setNotice(`Add your ${provider === 'gemini' ? 'Gemini' : 'OpenAI'} API key in Settings before running AI moderation.`)
+      setNotice(`Add your ${provider === 'gemini' ? 'Gemini' : provider === 'claude' ? 'Claude/VyceAI' : 'OpenAI'} API key in Settings before running AI moderation.`)
       setSettingsOpen(true)
       return
     }
@@ -211,7 +211,7 @@ export default function Page() {
           </div>
           <div className="relative">
             <button onClick={() => setSettingsOpen((open) => !open)} className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50" aria-expanded={settingsOpen}><Settings2 className="size-4" /> Settings <ChevronDown className="size-3.5 text-slate-400" /></button>
-            {settingsOpen && <div className="absolute right-0 z-10 mt-2 w-[min(340px,calc(100vw-2.5rem))] rounded-xl border border-slate-200 bg-white p-4 shadow-xl"><div className="mb-4 flex items-start justify-between"><div><p className="text-sm font-semibold">AI provider</p><p className="mt-1 text-xs text-slate-500">Your key stays in this browser only.</p></div><LockKeyhole className="size-4 text-slate-400" /></div><div className="mb-3 grid grid-cols-2 gap-2"><button onClick={() => setProvider('gemini')} className={`rounded-lg border px-3 py-2 text-xs font-semibold ${provider === 'gemini' ? 'border-slate-950 bg-slate-950 text-white' : 'border-slate-200 text-slate-600'}`}>Gemini</button><button onClick={() => setProvider('openai')} className={`rounded-lg border px-3 py-2 text-xs font-semibold ${provider === 'openai' ? 'border-slate-950 bg-slate-950 text-white' : 'border-slate-200 text-slate-600'}`}>OpenAI</button></div><label className="text-xs font-semibold text-slate-700" htmlFor="api-key">{provider === 'gemini' ? 'Gemini API key' : 'OpenAI API key'}</label><div className="relative mt-1.5"><KeyRound className="absolute left-3 top-2.5 size-4 text-slate-400" /><input id="api-key" type="password" value={apiKey} onChange={(event) => setApiKey(event.target.value)} placeholder="Paste your API key" className="w-full rounded-lg border border-slate-200 bg-slate-50 py-2 pl-9 pr-3 text-xs outline-none ring-offset-2 focus:border-slate-400 focus:ring-2 focus:ring-slate-200" /></div><button onClick={saveSettings} className="mt-3 w-full rounded-lg bg-slate-950 py-2.5 text-xs font-semibold text-white transition hover:bg-slate-800">Save settings</button></div>}
+            {settingsOpen && <div className="absolute right-0 z-10 mt-2 w-[min(340px,calc(100vw-2.5rem))] rounded-xl border border-slate-200 bg-white p-4 shadow-xl"><div className="mb-4 flex items-start justify-between"><div><p className="text-sm font-semibold">AI provider</p><p className="mt-1 text-xs text-slate-500">Your key stays in this browser only.</p></div><LockKeyhole className="size-4 text-slate-400" /></div><div className="mb-3 grid grid-cols-3 gap-2"><button onClick={() => setProvider('claude')} className={`rounded-lg border px-3 py-2 text-xs font-semibold ${provider === 'claude' ? 'border-slate-950 bg-slate-950 text-white' : 'border-slate-200 text-slate-600'}`}>Claude</button><button onClick={() => setProvider('gemini')} className={`rounded-lg border px-3 py-2 text-xs font-semibold ${provider === 'gemini' ? 'border-slate-950 bg-slate-950 text-white' : 'border-slate-200 text-slate-600'}`}>Gemini</button><button onClick={() => setProvider('openai')} className={`rounded-lg border px-3 py-2 text-xs font-semibold ${provider === 'openai' ? 'border-slate-950 bg-slate-950 text-white' : 'border-slate-200 text-slate-600'}`}>OpenAI</button></div><label className="text-xs font-semibold text-slate-700" htmlFor="api-key">{provider === 'gemini' ? 'Gemini API key' : provider === 'claude' ? 'Claude/VyceAI API key' : 'OpenAI API key'}</label><div className="relative mt-1.5"><KeyRound className="absolute left-3 top-2.5 size-4 text-slate-400" /><input id="api-key" type="password" value={apiKey} onChange={(event) => setApiKey(event.target.value)} placeholder="Paste your API key" className="w-full rounded-lg border border-slate-200 bg-slate-50 py-2 pl-9 pr-3 text-xs outline-none ring-offset-2 focus:border-slate-400 focus:ring-2 focus:ring-slate-200" /></div><button onClick={saveSettings} className="mt-3 w-full rounded-lg bg-slate-950 py-2.5 text-xs font-semibold text-white transition hover:bg-slate-800">Save settings</button></div>}
           </div>
         </div>
       </header>
