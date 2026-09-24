@@ -210,7 +210,7 @@ export default function Page() {
   return (
     <main className="min-h-screen bg-[#f8fafc] text-slate-950">
       <header className="border-b border-slate-200/80 bg-white">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-5 py-4 sm:px-8">
+        <div className="mx-auto flex max-w-7xl items-center justify-between px-5 py-3 sm:px-8">
           <div className="flex items-center gap-3">
             <div className="flex size-9 items-center justify-center rounded-xl bg-slate-950 text-white shadow-sm"><Gauge className="size-[18px]" /></div>
             <div><p className="text-sm font-bold tracking-tight">GBP Pre-Flight Checker</p><p className="hidden text-[11px] text-slate-400 sm:block">Publish with confidence</p></div>
@@ -222,7 +222,7 @@ export default function Page() {
         </div>
       </header>
 
-      <div className="mx-auto max-w-7xl px-4 pb-8 pt-6 sm:px-8 sm:pb-10 sm:pt-10">
+      <div className="mx-auto max-w-7xl px-4 pb-8 pt-4 sm:px-8 sm:pb-10 sm:pt-6">
         <div className="mb-6 max-w-2xl sm:mb-8"><div className="mb-3 inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-semibold text-slate-500"><Sparkles className="size-3.5 text-indigo-500" /> Client-side validation</div><h1 className="text-3xl font-bold tracking-[-0.04em] text-slate-950 sm:text-4xl">Check your post before it goes live.</h1><p className="mt-3 text-sm leading-6 text-slate-500 sm:text-base">Catch GBP policy issues in seconds with instant hard rules and optional AI-powered moderation.</p></div>
         {notice && <div role="status" className="mb-6 flex items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-medium text-amber-800"><span className="flex items-center gap-2"><AlertCircle className="size-4" /> {notice}</span><button onClick={() => setNotice(null)} aria-label="Dismiss notification"><X className="size-4" /></button></div>}
         <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,0.88fr)_minmax(0,1.12fr)] lg:gap-6">
