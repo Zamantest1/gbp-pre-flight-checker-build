@@ -90,7 +90,7 @@ export default function Page() {
   const [rules, setRules] = useState(initialRules)
   const [report, setReport] = useState(initialReport)
   const [apiKey, setApiKey] = useState('')
-  const [provider, setProvider] = useState<'gemini' | 'openai' | 'claude'>('claude')
+  const [provider, setProvider] = useState<'gemini' | 'openai' | 'claude'>('gemini')
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [dragging, setDragging] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -100,7 +100,7 @@ export default function Page() {
 
   useEffect(() => {
     setApiKey(window.localStorage.getItem('gbp-api-key') ?? '')
-    setProvider((window.localStorage.getItem('gbp-provider') as 'gemini' | 'openai' | 'claude') ?? 'claude')
+    setProvider('gemini')
   }, [])
 
   function saveSettings() {

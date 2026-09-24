@@ -30,13 +30,33 @@ export async function POST(request: Request) {
     const imageUrl = `data:${body.mimeType};base64,${body.image}`
     const userContent = [{ type: 'text', text: `Caption to moderate:\n${body.caption}` }, { type: 'image_url', image_url: { url: imageUrl } }]
     let response: Response
-    let text: string
+    let text = ''
 
     if (body.provider === 'gemini') {
-      response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${encodeURIComponent(body.apiKey)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ systemInstruction: { parts: [{ text: prompt }] }, contents: [{ role: 'user', parts: [{ text: `Caption to moderate:\n${body.caption}` }, { inlineData: { mimeType: body.mimeType, data: body.image } }] }], generationConfig: { temperature: 0.2, responseMimeType: 'application/json' } }) })
-      const data = await response.json()
-      if (!response.ok) throw new Error(data.error?.message ?? 'Gemini API request failed.')
-      text = data.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
+      const preferredModels = ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.0-flash']
+      const modelsResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(body.apiKey)}`)
+      const modelsData = await modelsResponse.json()
+      if (!modelsResponse.ok) throw new Error(modelsData.error?.message ?? 'Gemini API key was rejected.')
+
+      const availableModels = (modelsData.models ?? [])
+        .filter((model: { name?: string; supportedGenerationMethods?: string[] }) => model.name?.startsWith('models/gemini-') && model.supportedGenerationMethods?.includes('generateContent'))
+        .map((model: { name: string }) => model.name.replace(/^models\//, ''))
+      const candidates = [...new Set([...preferredModels.filter((model) => availableModels.includes(model)), ...availableModels.filter((model: string) => /flash/i.test(model))])]
+      if (!candidates.length) throw new Error('No Gemini model with image support is available for this API key.')
+
+      const shuffledModels = candidates.sort(() => Math.random() - 0.5)
+      let lastError = 'Gemini API request failed.'
+      for (const model of shuffledModels) {
+        response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(body.apiKey)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ systemInstruction: { parts: [{ text: prompt }] }, contents: [{ role: 'user', parts: [{ text: `Caption to moderate:\n${body.caption}` }, { inlineData: { mimeType: body.mimeType, data: body.image } }] }], generationConfig: { temperature: 0.2, responseMimeType: 'application/json' } }) })
+        const data = await response.json()
+        if (response.ok) {
+          text = data.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
+          if (text) break
+        }
+        lastError = data.error?.message ?? `Gemini model ${model} failed.`
+        if (response.status === 401 || response.status === 403) throw new Error('Gemini rejected this API key. Check that it is active and copied completely.')
+      }
+      if (!text) throw new Error(`Gemini could not complete the request after trying ${shuffledModels.length} available models. ${lastError}`)
     } else {
       const endpoint = body.provider === 'claude' ? 'https://api.selora.lol/v1/chat/completions' : 'https://api.openai.com/v1/chat/completions'
       const model = body.provider === 'claude' ? 'claude-sonnet-5' : 'gpt-4o-mini'
