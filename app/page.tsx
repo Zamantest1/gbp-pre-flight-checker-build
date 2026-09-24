@@ -99,6 +99,7 @@ export default function Page() {
   const [notice, setNotice] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
   const [showFullCaption, setShowFullCaption] = useState(false)
+  const [screen, setScreen] = useState<'form' | 'report'>('form')
 
   useEffect(() => {
     setApiKey(window.localStorage.getItem('gbp-api-key') ?? '')
@@ -164,6 +165,21 @@ export default function Page() {
     }
   }
 
+  function validateAnotherPost() {
+    setScreen('form')
+    setAiResult(null)
+    setProgress(0)
+    setReport(initialReport)
+    setRules(initialRules)
+    setCaption('')
+    setFile(null)
+    setPreview(null)
+    setDimensions('')
+    setNotice(null)
+    setShowFullCaption(false)
+    if (fileInputRef.current) fileInputRef.current.value = ''
+  }
+
   async function runValidation() {
     const nextRules = checkRules()
     setRules(nextRules)
@@ -201,6 +217,7 @@ export default function Page() {
       setAiResult(result)
       if (result.improvedCaption && result.improvedCaption !== caption) setCaption(result.improvedCaption)
       setProgress(100)
+      setScreen('report')
     } catch (error) {
       setProgress(0)
       setNotice(error instanceof Error ? error.message : 'Something went wrong while validating.')
@@ -227,8 +244,10 @@ export default function Page() {
       <div className="mx-auto max-w-7xl px-4 pb-8 pt-2 sm:px-8 sm:pb-10 sm:pt-3">
         <div className="mb-6 max-w-2xl sm:mb-8"><div className="mb-3 inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-semibold text-slate-500"><Sparkles className="size-3.5 text-indigo-500" /> Client-side validation</div><h1 className="text-3xl font-bold tracking-[-0.04em] text-slate-950 sm:text-4xl">Check your post before it goes live.</h1><p className="mt-3 text-sm leading-6 text-slate-500 sm:text-base">Catch GBP policy issues in seconds with instant hard rules and optional AI-powered moderation.</p></div>
         {notice && <div role="status" className="mb-6 flex items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-medium text-amber-800"><span className="flex items-center gap-2"><AlertCircle className="size-4" /> {notice}</span><button onClick={() => setNotice(null)} aria-label="Dismiss notification"><X className="size-4" /></button></div>}
-        <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,0.88fr)_minmax(0,1.12fr)] lg:gap-6">
-          <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_2px_12px_rgba(15,23,42,0.03)] sm:p-6"><div className="mb-5"><p className="text-base font-bold">Post details</p><p className="mt-1 text-xs text-slate-500">Upload an image and add the caption you plan to publish.</p></div>
+        {screen === 'report' && aiResult && <section className="mb-5 rounded-2xl border border-indigo-200 bg-gradient-to-br from-indigo-50 via-white to-emerald-50 p-5 shadow-[0_8px_30px_rgba(79,70,229,0.08)] sm:p-6"><div className="flex flex-wrap items-center justify-between gap-4"><div><div className="mb-2 flex items-center gap-2 text-xs font-bold uppercase tracking-[0.16em] text-indigo-600"><CheckCircle2 className="size-4" /> Validation complete</div><h2 className="text-2xl font-bold tracking-[-0.03em] text-slate-950">Your post is ready for review.</h2><p className="mt-1 text-sm text-slate-600">Use the recommendations below to make this GBP post clearer, safer, and more compliant.</p></div><div className="flex items-center gap-3"><div className="text-right"><p className="text-3xl font-bold tracking-tight text-slate-950">{Math.max(0, Math.min(100, Math.round(aiResult.qualityScore)))}</p><p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">quality score</p></div><button onClick={validateAnotherPost} className="inline-flex items-center gap-2 rounded-xl bg-slate-950 px-4 py-3 text-xs font-semibold text-white shadow-sm transition hover:bg-slate-800"><UploadCloud className="size-4" /> Validate another post</button></div></div></section>}
+        {loading && <section className="mx-auto max-w-xl rounded-2xl border border-indigo-100 bg-white p-8 text-center shadow-[0_8px_30px_rgba(15,23,42,0.06)] sm:p-12" aria-live="polite"><div className="mx-auto mb-5 flex size-14 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600"><Loader2 className="size-7 animate-spin" /></div><p className="text-lg font-bold text-slate-950">Preparing your validation report</p><p className="mt-2 text-sm text-slate-500">Checking the image, caption, and GBP publishing risks.</p><div className="mt-7 flex items-center justify-between text-xs font-semibold text-indigo-700"><span>{progress < 38 ? 'Checking image' : progress < 78 ? 'Reviewing caption' : 'Preparing recommendations'}</span><span>{progress}%</span></div><div className="mt-2 h-2.5 overflow-hidden rounded-full bg-indigo-50"><div className="h-full rounded-full bg-indigo-500 transition-all duration-500" style={{ width: `${progress}%` }} /></div></section>}
+        <div className={`${loading ? 'hidden' : ''} grid items-start gap-5 lg:gap-6 ${screen === 'report' ? 'lg:grid-cols-1' : 'lg:grid-cols-[minmax(0,0.88fr)_minmax(0,1.12fr)]'}`}>
+          <section className={`${screen === 'report' ? 'hidden' : ''} rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_2px_12px_rgba(15,23,42,0.03)] sm:p-6`}><div className="mb-5"><p className="text-base font-bold">Post details</p><p className="mt-1 text-xs text-slate-500">Upload an image and add the caption you plan to publish.</p></div>
             <div onClick={() => fileInputRef.current?.click()} onDragOver={(event) => { event.preventDefault(); setDragging(true) }} onDragLeave={() => setDragging(false)} onDrop={handleDrop} className={`group relative flex min-h-[214px] cursor-pointer flex-col items-center justify-center overflow-hidden rounded-xl border border-dashed transition ${dragging ? 'border-indigo-500 bg-indigo-50' : 'border-slate-300 bg-slate-50/70 hover:border-slate-400 hover:bg-slate-50'}`}>
               <input ref={fileInputRef} type="file" accept="image/jpeg,image/png" onChange={handleFileChange} className="sr-only" />
               {preview ? <><img src={preview} alt="Selected GBP post preview" className="absolute inset-0 size-full object-contain p-3" /><div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-950/70 to-transparent px-4 pb-3 pt-8 text-xs text-white"><span className="font-semibold">{file?.name}</span><span className="ml-2 text-white/70">{dimensions}</span></div></> : <><div className="mb-3 flex size-11 items-center justify-center rounded-xl bg-white text-slate-500 shadow-sm"><UploadCloud className="size-5" /></div><p className="text-sm font-semibold text-slate-700">Drop your image here</p><p className="mt-1 text-xs text-slate-400">or click to browse · JPG or PNG, max 5 MB</p></>}
