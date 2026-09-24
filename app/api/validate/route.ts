@@ -5,11 +5,12 @@ const prompt = `You are an expert Google Business Profile moderator. Analyze the
   "textRatio": { "status": "Pass|Fail|Warning", "reason": "..." },
   "visualSafety": { "status": "Pass|Fail|Warning", "reason": "..." },
   "captionPolicy": { "status": "Pass|Fail|Warning", "reason": "..." },
+  "qualityScore": 0,
   "improvedCaption": "...",
   "captionChanges": ["..."],
   "imageSuggestions": ["..."]
 }
-Keep improvedCaption concise and publishable. Automatically remove or rewrite links, phone numbers, keyword stuffing, and restricted claims. If the caption is compliant, return it unchanged and use an empty captionChanges array. Give 2-4 practical imageSuggestions, even when the image passes. Never include markdown fences.`
+Keep improvedCaption concise and publishable. Automatically remove or rewrite links, phone numbers, keyword stuffing, and restricted claims. If the caption is compliant, return it unchanged and use an empty captionChanges array. Give 2-4 practical imageSuggestions, even when the image passes. Set qualityScore to an integer from 0 to 100 representing overall GBP publish-readiness: weigh policy compliance, image quality, text overlay, and caption clarity. Explain score-relevant issues in the existing reason and suggestion fields. Never include markdown fences.`
 
 type RequestBody = { caption?: string; image?: string; mimeType?: string; apiKey?: string; provider?: 'openai' | 'gemini' | 'claude' }
 
