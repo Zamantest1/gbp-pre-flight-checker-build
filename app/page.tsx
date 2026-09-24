@@ -6,6 +6,7 @@ import {
   Check,
   CheckCircle2,
   ChevronDown,
+  Clipboard,
   FileImage,
   Gauge,
   ImagePlus,
@@ -90,25 +91,30 @@ export default function Page() {
   const [rules, setRules] = useState(initialRules)
   const [report, setReport] = useState(initialReport)
   const [apiKey, setApiKey] = useState('')
-  const [provider, setProvider] = useState<'gemini' | 'openai' | 'claude'>('gemini')
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [dragging, setDragging] = useState(false)
   const [loading, setLoading] = useState(false)
   const [progress, setProgress] = useState(0)
   const [aiResult, setAiResult] = useState<AIResult | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+  const [copied, setCopied] = useState(false)
 
   useEffect(() => {
     setApiKey(window.localStorage.getItem('gbp-api-key') ?? '')
-    setProvider('gemini')
   }, [])
 
   function saveSettings() {
     window.localStorage.setItem('gbp-api-key', apiKey)
-    window.localStorage.setItem('gbp-provider', provider)
     setSettingsOpen(false)
     setNotice('Settings saved securely in this browser.')
     window.setTimeout(() => setNotice(null), 3000)
+  }
+
+  async function copyImprovedCaption() {
+    if (!aiResult?.improvedCaption) return
+    await navigator.clipboard.writeText(aiResult.improvedCaption)
+    setCopied(true)
+    window.setTimeout(() => setCopied(false), 1800)
   }
 
   function loadFile(nextFile: File) {
@@ -167,7 +173,7 @@ export default function Page() {
       return
     }
     if (!apiKey.trim()) {
-      setNotice(`Add your ${provider === 'gemini' ? 'Gemini' : provider === 'claude' ? 'Claude/VyceAI' : 'OpenAI'} API key in Settings before running AI moderation.`)
+      setNotice('Add your Gemini API key in Settings before running AI moderation.')
       setSettingsOpen(true)
       return
     }
@@ -184,7 +190,7 @@ export default function Page() {
       const response = await fetch('/api/validate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ caption, image: base64, mimeType: file.type, apiKey: apiKey.trim(), provider }),
+        body: JSON.stringify({ caption, image: base64, mimeType: file.type, apiKey: apiKey.trim(), provider: 'gemini' }),
       })
       setProgress(78)
       const data = await response.json()
@@ -211,16 +217,16 @@ export default function Page() {
           </div>
           <div className="relative">
             <button onClick={() => setSettingsOpen((open) => !open)} className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50" aria-expanded={settingsOpen}><Settings2 className="size-4" /> Settings <ChevronDown className="size-3.5 text-slate-400" /></button>
-            {settingsOpen && <div className="absolute right-0 z-10 mt-2 w-[min(340px,calc(100vw-2.5rem))] rounded-xl border border-slate-200 bg-white p-4 shadow-xl"><div className="mb-4 flex items-start justify-between"><div><p className="text-sm font-semibold">AI provider</p><p className="mt-1 text-xs text-slate-500">Your key stays in this browser only.</p></div><LockKeyhole className="size-4 text-slate-400" /></div><div className="mb-3 grid grid-cols-3 gap-2"><button onClick={() => setProvider('claude')} className={`rounded-lg border px-3 py-2 text-xs font-semibold ${provider === 'claude' ? 'border-slate-950 bg-slate-950 text-white' : 'border-slate-200 text-slate-600'}`}>Claude</button><button onClick={() => setProvider('gemini')} className={`rounded-lg border px-3 py-2 text-xs font-semibold ${provider === 'gemini' ? 'border-slate-950 bg-slate-950 text-white' : 'border-slate-200 text-slate-600'}`}>Gemini</button><button onClick={() => setProvider('openai')} className={`rounded-lg border px-3 py-2 text-xs font-semibold ${provider === 'openai' ? 'border-slate-950 bg-slate-950 text-white' : 'border-slate-200 text-slate-600'}`}>OpenAI</button></div><label className="text-xs font-semibold text-slate-700" htmlFor="api-key">{provider === 'gemini' ? 'Gemini API key' : provider === 'claude' ? 'Claude/VyceAI API key' : 'OpenAI API key'}</label><div className="relative mt-1.5"><KeyRound className="absolute left-3 top-2.5 size-4 text-slate-400" /><input id="api-key" type="password" value={apiKey} onChange={(event) => setApiKey(event.target.value)} placeholder="Paste your API key" className="w-full rounded-lg border border-slate-200 bg-slate-50 py-2 pl-9 pr-3 text-xs outline-none ring-offset-2 focus:border-slate-400 focus:ring-2 focus:ring-slate-200" /></div><button onClick={saveSettings} className="mt-3 w-full rounded-lg bg-slate-950 py-2.5 text-xs font-semibold text-white transition hover:bg-slate-800">Save settings</button></div>}
+            {settingsOpen && <div className="absolute right-0 z-20 mt-2 w-[min(340px,calc(100vw-2rem))] rounded-2xl border border-slate-200 bg-white p-4 shadow-xl"><div className="mb-4 flex items-start justify-between"><div><p className="text-sm font-semibold">Gemini connection</p><p className="mt-1 text-xs leading-5 text-slate-500">Your key is saved only in this browser&apos;s cache.</p></div><LockKeyhole className="size-4 text-slate-400" /></div><div className="mb-3 rounded-lg border border-indigo-100 bg-indigo-50 px-3 py-2 text-xs font-semibold text-indigo-800">Google Gemini API</div><label className="text-xs font-semibold text-slate-700" htmlFor="api-key">Gemini API key</label><div className="relative mt-1.5"><KeyRound className="absolute left-3 top-2.5 size-4 text-slate-400" /><input id="api-key" type="password" value={apiKey} onChange={(event) => setApiKey(event.target.value)} placeholder="Paste your Gemini API key" className="w-full rounded-lg border border-slate-200 bg-slate-50 py-2 pl-9 pr-3 text-xs outline-none ring-offset-2 focus:border-slate-400 focus:ring-2 focus:ring-slate-200" /></div><button onClick={saveSettings} className="mt-3 w-full rounded-lg bg-slate-950 py-2.5 text-xs font-semibold text-white transition hover:bg-slate-800">Save Gemini settings</button></div>}
           </div>
         </div>
       </header>
 
-      <div className="mx-auto max-w-7xl px-5 pb-10 pt-10 sm:px-8 sm:pt-14">
-        <div className="mb-9 max-w-2xl"><div className="mb-3 inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-semibold text-slate-500"><Sparkles className="size-3.5 text-indigo-500" /> Client-side validation</div><h1 className="text-3xl font-bold tracking-[-0.04em] text-slate-950 sm:text-4xl">Check your post before it goes live.</h1><p className="mt-3 text-sm leading-6 text-slate-500 sm:text-base">Catch GBP policy issues in seconds with instant hard rules and optional AI-powered moderation.</p></div>
+      <div className="mx-auto max-w-7xl px-4 pb-8 pt-6 sm:px-8 sm:pb-10 sm:pt-10">
+        <div className="mb-6 max-w-2xl sm:mb-8"><div className="mb-3 inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-semibold text-slate-500"><Sparkles className="size-3.5 text-indigo-500" /> Client-side validation</div><h1 className="text-3xl font-bold tracking-[-0.04em] text-slate-950 sm:text-4xl">Check your post before it goes live.</h1><p className="mt-3 text-sm leading-6 text-slate-500 sm:text-base">Catch GBP policy issues in seconds with instant hard rules and optional AI-powered moderation.</p></div>
         {notice && <div role="status" className="mb-6 flex items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-medium text-amber-800"><span className="flex items-center gap-2"><AlertCircle className="size-4" /> {notice}</span><button onClick={() => setNotice(null)} aria-label="Dismiss notification"><X className="size-4" /></button></div>}
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
-          <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_2px_12px_rgba(15,23,42,0.03)] sm:p-6"><div className="mb-5"><p className="text-base font-bold">Post details</p><p className="mt-1 text-xs text-slate-500">Upload an image and add the caption you plan to publish.</p></div>
+        <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,0.88fr)_minmax(0,1.12fr)] lg:gap-6">
+          <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_2px_12px_rgba(15,23,42,0.03)] sm:p-6"><div className="mb-5"><p className="text-base font-bold">Post details</p><p className="mt-1 text-xs text-slate-500">Upload an image and add the caption you plan to publish.</p></div>
             <div onClick={() => fileInputRef.current?.click()} onDragOver={(event) => { event.preventDefault(); setDragging(true) }} onDragLeave={() => setDragging(false)} onDrop={handleDrop} className={`group relative flex min-h-[214px] cursor-pointer flex-col items-center justify-center overflow-hidden rounded-xl border border-dashed transition ${dragging ? 'border-indigo-500 bg-indigo-50' : 'border-slate-300 bg-slate-50/70 hover:border-slate-400 hover:bg-slate-50'}`}>
               <input ref={fileInputRef} type="file" accept="image/jpeg,image/png" onChange={handleFileChange} className="sr-only" />
               {preview ? <><img src={preview} alt="Selected GBP post preview" className="absolute inset-0 size-full object-contain p-3" /><div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-950/70 to-transparent px-4 pb-3 pt-8 text-xs text-white"><span className="font-semibold">{file?.name}</span><span className="ml-2 text-white/70">{dimensions}</span></div></> : <><div className="mb-3 flex size-11 items-center justify-center rounded-xl bg-white text-slate-500 shadow-sm"><UploadCloud className="size-5" /></div><p className="text-sm font-semibold text-slate-700">Drop your image here</p><p className="mt-1 text-xs text-slate-400">or click to browse · JPG or PNG, max 5 MB</p></>}
@@ -231,9 +237,9 @@ export default function Page() {
             <p className="mt-3 flex items-center justify-center gap-1.5 text-[11px] text-slate-400"><LockKeyhole className="size-3" /> Your image is processed in memory and never uploaded to our servers.</p>
           </section>
 
-          <section className="flex flex-col gap-6"><div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_2px_12px_rgba(15,23,42,0.03)] sm:p-6"><div className="mb-5 flex items-start justify-between"><div><p className="text-base font-bold">Hard rules</p><p className="mt-1 text-xs text-slate-500">Instant checks run before any AI analysis.</p></div><div className="flex size-8 items-center justify-center rounded-lg bg-slate-100"><Check className="size-4 text-slate-600" /></div></div><div><RuleRow label="Image size" detail={rules.image.detail} status={rules.image.status} /><RuleRow label="Caption length" detail={rules.caption.detail} status={rules.caption.status} /><RuleRow label="URLs & links" detail={rules.links.detail} status={rules.links.status} /><RuleRow label="Phone numbers" detail={rules.phone.detail} status={rules.phone.status} /></div></div>
+          <section className="flex flex-col gap-5 lg:sticky lg:top-4"><div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_2px_12px_rgba(15,23,42,0.03)] sm:p-6"><div className="mb-5 flex items-start justify-between"><div><p className="text-base font-bold">Hard rules</p><p className="mt-1 text-xs text-slate-500">Instant checks run before any AI analysis.</p></div><div className="flex size-8 items-center justify-center rounded-lg bg-slate-100"><Check className="size-4 text-slate-600" /></div></div><div><RuleRow label="Image size" detail={rules.image.detail} status={rules.image.status} /><RuleRow label="Caption length" detail={rules.caption.detail} status={rules.caption.status} /><RuleRow label="URLs & links" detail={rules.links.detail} status={rules.links.status} /><RuleRow label="Phone numbers" detail={rules.phone.detail} status={rules.phone.status} /></div></div>
             <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_2px_12px_rgba(15,23,42,0.03)] sm:p-6"><div className="mb-5 flex items-start justify-between"><div><p className="text-base font-bold">AI moderation report</p><p className="mt-1 text-xs text-slate-500">Deeper checks for imagery and language.</p></div><div className="flex size-8 items-center justify-center rounded-lg bg-indigo-50"><Sparkles className="size-4 text-indigo-500" /></div></div><div><RuleRow label="Text-to-image ratio" detail={report.textRatio.reason} status={report.textRatio.status} /><RuleRow label="SafeSearch & quality" detail={report.visualSafety.reason} status={report.visualSafety.status} /><RuleRow label="Text policy" detail={report.captionPolicy.reason} status={report.captionPolicy.status} /></div></div>
-            {aiResult && <div className="grid gap-6 sm:grid-cols-2"><div className="rounded-2xl border border-emerald-200 bg-emerald-50/60 p-5"><div className="flex items-center gap-2"><MessageSquareText className="size-4 text-emerald-600" /><p className="text-sm font-bold text-emerald-950">Caption improvement</p></div><p className="mt-3 rounded-xl border border-emerald-100 bg-white/80 p-3 text-sm leading-6 text-slate-700">{aiResult.improvedCaption}</p>{aiResult.captionChanges.length > 0 && <ul className="mt-3 flex flex-col gap-1.5 text-xs text-emerald-800">{aiResult.captionChanges.map((change) => <li key={change}>• {change}</li>)}</ul>}</div><div className="rounded-2xl border border-indigo-200 bg-indigo-50/60 p-5"><div className="flex items-center gap-2"><ImagePlus className="size-4 text-indigo-600" /><p className="text-sm font-bold text-indigo-950">Image suggestions</p></div><ul className="mt-3 flex flex-col gap-2 text-xs leading-5 text-indigo-900">{aiResult.imageSuggestions.map((suggestion) => <li key={suggestion} className="flex gap-2"><span className="font-bold">{`→`}</span><span>{suggestion}</span></li>)}</ul></div></div>}
+            {aiResult && <div className="grid gap-4 sm:grid-cols-2"><div className="rounded-2xl border border-emerald-200 bg-emerald-50/60 p-5"><div className="flex items-center gap-2"><MessageSquareText className="size-4 text-emerald-600" /><p className="text-sm font-bold text-emerald-950">Caption improvement</p></div><div className="mt-3 flex items-start gap-2 rounded-xl border border-emerald-100 bg-white/80 p-3"><p className="min-w-0 flex-1 text-sm leading-6 text-slate-700">{aiResult.improvedCaption}</p><button onClick={copyImprovedCaption} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-emerald-200 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-emerald-700 transition hover:bg-emerald-50" aria-label="Copy improved caption"><Clipboard className="size-3.5" /> {copied ? 'Copied' : 'Copy'}</button></div>{aiResult.captionChanges.length > 0 && <ul className="mt-3 flex flex-col gap-1.5 text-xs text-emerald-800">{aiResult.captionChanges.map((change) => <li key={change}>• {change}</li>)}</ul>}</div><div className="rounded-2xl border border-indigo-200 bg-indigo-50/60 p-5"><div className="flex items-center gap-2"><ImagePlus className="size-4 text-indigo-600" /><p className="text-sm font-bold text-indigo-950">Image suggestions</p></div><ul className="mt-3 flex flex-col gap-2 text-xs leading-5 text-indigo-900">{aiResult.imageSuggestions.map((suggestion) => <li key={suggestion} className="flex gap-2"><span className="font-bold">{`→`}</span><span>{suggestion}</span></li>)}</ul></div></div>}
           </section>
         </div>
         <footer className="pt-12 text-center text-xs text-slate-400">Built by <a href="https://shomikujzaman.vercel.app" target="_blank" rel="noreferrer" className="font-medium text-slate-500 underline decoration-slate-300 underline-offset-2 transition hover:text-slate-800">shomik</a></footer>
